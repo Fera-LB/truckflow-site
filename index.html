@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>TruckFlow Account</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --fg: #111827; --muted: #5b6472; --line: #dde1e7;
+    --accent: #f59e0b; --accent-ink: #1a1203; --ok: #15803d; --bad: #dc2626;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --card: #161b22; --fg: #f3f4f6; --muted: #9aa4b2; --line: #2a313c;
+      --accent: #fbbf24; --accent-ink: #1a1203; --ok: #4ade80; --bad: #f87171; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); }
+  .card { width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 28px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .brand { font-weight: 800; letter-spacing: 1.5px; font-size: 13px; color: var(--accent); }
+  h1 { margin: 0; font-size: 24px; line-height: 1.2; text-wrap: balance; }
+  p { margin: 0; color: var(--muted); }
+  .icon { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; font-size: 28px; font-weight: 800; }
+  .icon.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .icon.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+  .field { position: relative; }
+  input { width: 100%; height: 50px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg);
+    color: var(--fg); font-size: 17px; padding: 0 52px 0 12px; }
+  .eye { position: absolute; right: 6px; top: 5px; height: 40px; padding: 0 10px; border: 0; background: none;
+    color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn { height: 52px; border: 0; border-radius: 14px; background: var(--accent); color: var(--accent-ink);
+    font-size: 17px; font-weight: 800; cursor: pointer; }
+  .btn:disabled { opacity: .5; }
+  .err { color: var(--bad); font-weight: 600; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="card" id="app">
+  <div class="brand">TRUCKFLOW</div>
+  <h1>Loading…</h1>
+</main>
+<script>
+  // Endereço do Supabase e chave publishable (pública, a mesma que vai dentro do app)
+  const SB_URL = 'https://jwyopnywuutffaawzkxc.supabase.co';
+  const SB_KEY = 'sb_publishable_e3fUhreJPYdf1ieqza5UKw_jXbaW1mu';
+
+  // O Supabase volta para cá com os dados no "#": tipo (signup / recovery), token ou erro
+  const h = new URLSearchParams(location.hash.slice(1));
+  const q = new URLSearchParams(location.search);
+  const get = (k) => h.get(k) || q.get(k);
+  history.replaceState(null, '', location.pathname); // tira o token da barra de endereço
+
+  const app = document.getElementById('app');
+  const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const show = (kind, title, text) => {
+    app.innerHTML = `<div class="brand">TRUCKFLOW</div>
+      ${kind ? `<div class="icon ${kind}">${kind === 'ok' ? '✓' : '!'}</div>` : ''}
+      <h1>${esc(title)}</h1><p>${esc(text)}</p>`;
+  };
+
+  const error = get('error_description') || get('error');
+  const type = get('type');
+  const token = get('access_token');
+
+  if (error) {
+    show('bad', 'This link did not work', /expired|invalid/i.test(error)
+      ? 'The link expired or was already used. Open TruckFlow and try again.'
+      : error.replace(/\+/g, ' '));
+  } else if (type === 'recovery' && token) {
+    // Nova senha
+    app.innerHTML = `<div class="brand">TRUCKFLOW</div>
+      <h1>Create a new password</h1>
+      <p>Use at least 6 characters.</p>
+      <form id="f" style="display:flex;flex-direction:column;gap:12px">
+        <div class="field">
+          <input id="pw" type="password" autocomplete="new-password" placeholder="New password" minlength="6" required>
+          <button type="button" class="eye" id="eye">Show</button>
+        </div>
+        <p class="err" id="err" hidden></p>
+        <button class="btn" id="go">Save password</button>
+      </form>`;
+    const pw = document.getElementById('pw');
+    const eye = document.getElementById('eye');
+    const err = document.getElementById('err');
+    const go = document.getElementById('go');
+    eye.onclick = () => {
+      const hidden = pw.type === 'password';
+      pw.type = hidden ? 'text' : 'password';
+      eye.textContent = hidden ? 'Hide' : 'Show';
+    };
+    document.getElementById('f').onsubmit = async (e) => {
+      e.preventDefault();
+      const password = pw.value.trim();
+      if (password.length < 6) { err.textContent = 'The password needs at least 6 characters.'; err.hidden = false; return; }
+      go.disabled = true; err.hidden = true;
+      try {
+        const res = await fetch(`${SB_URL}/auth/v1/user`, {
+          method: 'PUT',
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.msg || j.message || j.error_description || `Error ${res.status}`);
+        show('ok', 'Password saved', 'Go back to TruckFlow and sign in with your new password.');
+      } catch (x) {
+        err.textContent = /same/i.test(x.message) ? 'That is your current password. Type a different one.' : x.message;
+        err.hidden = false; go.disabled = false;
+      }
+    };
+  } else if (token || type === 'signup' || type === 'email_change' || type === 'magiclink') {
+    show('ok', 'Email confirmed', 'All set. Go back to TruckFlow and sign in.');
+  } else {
+    show('', 'TruckFlow account', 'This page finishes email links from the TruckFlow app. Open TruckFlow on your phone to sign in.');
+  }
+</script>
+</body>
+</html>
